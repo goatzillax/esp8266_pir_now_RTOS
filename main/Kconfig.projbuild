@@ -1,0 +1,36 @@
+menu "App Configuration"
+
+choice WIFI_MODE
+    prompt "WiFi mode"
+    default STATION_MODE
+    help
+        WiFi mode(station or softap).
+    
+config STATION_MODE
+    bool "Station"
+config SOFTAP_MODE
+    bool "Softap"
+endchoice
+      
+config ESPNOW_CHANNEL
+    int "Channel"
+    default 1
+    range 1 13
+    help
+        The channel on which sending and receiving ESPNOW data.
+
+config ESPNOW_SEND_DELAY
+    int "Send delay"
+    default 1000
+    range 0 65535
+    help
+        Delay between sending two ESPNOW data, unit: ms.
+ 
+config ADC_SAMPLECNT
+    int "ADC sample count"
+    default 10
+    help
+        Number of samples to take and average
+
+       
+endmenu

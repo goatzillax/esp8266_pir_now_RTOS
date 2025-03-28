@@ -45,16 +45,15 @@ void run_adc() {
 
 	//  fast version sez need interrupt disable but I no see that
 	for (int i=0; i<CONFIG_ADC_SAMPLECNT; i++) {
-		if (ESP_OK != adc_read(&adc_data)) {
+		if (ESP_OK != adc_read_nofuckup(&adc_data)) {
 			ESP_LOGE(TAG, "adc read %d failed\n", i);
 		}
 		sum += adc_data; 
 	}
 
 	adc_data = (uint16_t) (sum / CONFIG_ADC_SAMPLECNT);
-	voltage = (adc_data) * 11.0f/12.0f;  // oh great the SDK is fouling this up by about 9%.
-//	voltage = (voltage / 1023.0f) * (220.0f + 43.0f + 100.0f) / 100.0f;
-	voltage = (voltage / 1023.0f) * (220.0f + 1200.0f + 100.0f) / 100.0f;
+//	voltage = ((float) adc_data / 1023.0f) * (220.0f + 42.0f + 100.0f) / 100.0f;
+	voltage = ((float) adc_data / 1023.0f) * (220.0f + 1200.0f + 100.0f) / 100.0f;
 	ESP_LOGI(TAG, "ADC Value %d, %.2f v\n", adc_data, voltage);  // float print requires disable nano formatting of newlib component
 }
 

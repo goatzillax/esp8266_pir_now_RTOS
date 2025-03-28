@@ -1,0 +1,65 @@
+From d35e7b86d341a2ddf9623f3610479ff304fa0975 Mon Sep 17 00:00:00 2001
+From: goatzillax <goatzillax@users.noreply.github.com>
+Date: Thu, 27 Mar 2025 19:42:56 -0500
+Subject: [PATCH] espressif y u do dis?  y u damage my dataaarrrrrzz
+
+---
+ components/esp8266/driver/adc.c         | 22 ++++++++++++++++++++++
+ components/esp8266/include/driver/adc.h |  3 ++-
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/components/esp8266/driver/adc.c b/components/esp8266/driver/adc.c
+index 80ee7419..26ceb279 100644
+--- a/components/esp8266/driver/adc.c
++++ b/components/esp8266/driver/adc.c
+@@ -44,6 +44,28 @@ typedef struct {
+ 
+ adc_handle_t *adc_handle = NULL;
+ 
++esp_err_t adc_read_nofuckup(uint16_t *data)
++{
++    ADC_CHECK(data, "parameter pointer is empty", ESP_ERR_INVALID_ARG);
++    ADC_CHECK(adc_handle, "ADC has not been initialized yet.", ESP_FAIL);
++    uint16_t ret = 0;
++    xSemaphoreTake(adc_handle->adc_mux, portMAX_DELAY);
++
++    if (adc_handle->config.mode == ADC_READ_TOUT_MODE) {
++        vTaskSuspendAll();
++        ret = test_tout(0);
++        xTaskResumeAll();
++    } else if (adc_handle->config.mode == ADC_READ_VDD_MODE) {
++        vTaskSuspendAll();
++        ret = phy_get_vdd33();
++        xTaskResumeAll();
++    }
++
++    *data = ret;
++    xSemaphoreGive(adc_handle->adc_mux);
++    return ESP_OK;
++}
++
+ esp_err_t adc_read(uint16_t *data)
+ {
+     ADC_CHECK(data, "parameter pointer is empty", ESP_ERR_INVALID_ARG);
+diff --git a/components/esp8266/include/driver/adc.h b/components/esp8266/include/driver/adc.h
+index dbb9fb28..460b6ff9 100644
+--- a/components/esp8266/include/driver/adc.h
++++ b/components/esp8266/include/driver/adc.h
+@@ -51,6 +51,7 @@ typedef struct {
+   *     - ESP_FAIL adc has not been initialized yet
+   */
+ esp_err_t adc_read(uint16_t *data);
++esp_err_t adc_read_nofuckup(uint16_t *data);
+ 
+ /**
+   * @brief Measure the input voltage of TOUT(ADC) pin, unit : 1/1023 V.
+@@ -98,4 +99,4 @@ esp_err_t adc_init(adc_config_t *config);
+ 
+ #ifdef __cplusplus
+ }
+-#endif
+\ No newline at end of file
++#endif
+-- 
+2.25.1
+

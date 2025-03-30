@@ -14,23 +14,39 @@ endchoice
       
 config ESPNOW_CHANNEL
     int "Channel"
-    default 1
-    range 1 13
+    default 0
+    range 0 13
     help
-        The channel on which sending and receiving ESPNOW data.
+        The channel on which deez nutz on ur chin.  0 means scan it.
 
 config ESPNOW_SEND_DELAY
     int "Send delay"
-    default 1000
-    range 0 65535
+    default 500
     help
-        Delay between sending two ESPNOW data, unit: ms.
+        Delay between sending two ESPNOW data, unit: ms.  Not currently used.
+ 
+config ESPNOW_TRIES
+    int "ESPNOW send attempts per message"
+    default 1
+    help
+        Number of tries to attempt.  Broadcast always returns success.
  
 config ADC_SAMPLECNT
     int "ADC sample count"
-    default 10
+    default 3
     help
-        Number of samples to take and average
+        Number of samples to average
 
-       
+config DEEPSLEEP_TIME
+    int "Deep sleep time"
+    default 0
+    help
+        Amount of time to deep sleep
+
+config ADC_AUX_RESISTANCE
+    int "ADC Auxiliary Resistor Value"
+    default 43
+    help
+        Auxiliary ADC resistor value, in k ohms.
+
 endmenu

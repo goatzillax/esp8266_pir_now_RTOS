@@ -16,27 +16,23 @@
 
 static const char *TAG = "espnow_tx";
 
-float voltage = 0;
-
 static TaskHandle_t mainTask = NULL;
 
+float voltage = 0;
+uint16_t adc_data;  //  keeping this around for calibration
+
 static uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
+int scanned=0;
+struct_PIR_msg msg;  //  dunno what the lifetime of this should be, but we passed the address.
 
 RTC_DATA_ATTR uint32_t wifi_channel=CONFIG_ESPNOW_CHANNEL;  //  wifi-chan start chan at zero chan desu.  chan == 0 means scan.
 RTC_DATA_ATTR uint32_t failberts=0;
-
-enum e_xmit_state {
-   XMIT_IDLE,
-   XMIT_STARTED,
-   XMIT_FINISHED
-};
-
 
 void go2sleep() {
 	esp_wifi_stop();
 	fflush(stdout);
 	esp_deep_sleep(CONFIG_DEEPSLEEP_TIME);
-}
+}  // https://www.amazon.com/Go-F-Sleep-Adam-Mansbach/dp/1617750255
 
 
 void setup_adc() {
@@ -48,7 +44,6 @@ void setup_adc() {
 	ESP_ERROR_CHECK(adc_init(&adc_config));
 }
 
-uint16_t adc_data;
 
 void run_adc() {
 	uint32_t sum=0;
@@ -67,6 +62,7 @@ void run_adc() {
 	voltage = ((float) adc_data / 1023.0f) * (aux_resistor + 220.0f + 100.0f) / 100.0f;
 	ESP_LOGI(TAG, "ADC Value %d, %.2f v\n", adc_data, voltage);  // float print requires disable nano formatting of newlib component
 }
+
 
 static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status) {
 	//  this is supposed to be running "from the wifi task".  docs say it's a high priority task but never mentions if it's ISR.
@@ -89,9 +85,7 @@ static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status
 #endif
 
 esp_now_peer_info_t *peer;
-struct_PIR_msg msg;  //  dunno what the lifetime of this should be, but we passed the address.
 
-int scanned=0;
 
 void send_message() {
 #ifdef USE_UNICAST
@@ -146,7 +140,7 @@ void setup_espnow() {
 		for (int i=0; i<3; i++) {
 			int scan_chan = 13;  //  seems like we should ping pong these in a sequence to avoid schmear?
 			while (scan_chan > 0) {
-				ESP_ERROR_CHECK( esp_wifi_set_channel(scan_chan, scan_chan) );
+				ESP_ERROR_CHECK( esp_wifi_set_channel(scan_chan, WIFI_SECOND_CHAN_NONE) );
 				peer->channel = scan_chan;  // this feels useless to me
 				memcpy(peer->peer_addr, unicast_mac, ESP_NOW_ETH_ALEN);
 				ESP_ERROR_CHECK( esp_now_add_peer(peer) );

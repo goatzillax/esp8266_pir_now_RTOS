@@ -24,8 +24,8 @@ typedef struct {
 struct_ESPNOW_msg mac_cache[MAC_CACHE_LEN];
 int mac_cache_sz = 0;
 bool plzrefresh = true;
-
 uint8_t wifi_chan=1;
+unsigned long last_update_time = 0;
 
 //  returns -1 if not found and there's a completely free slot available.
 int search_cache(const uint8_t *mac) {
@@ -77,11 +77,17 @@ void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
 int display_index=0;
 
 void refreshingDisplay() {
+	last_update_time = millis();
+	float batt_v;
+
+	power->adc1Enable(AXP202_VBUS_VOL_ADC1 | AXP202_VBUS_CUR_ADC1 | AXP202_BATT_CUR_ADC1 | AXP202_BATT_VOL_ADC1, true);
+	batt_v = power->getBattVoltage();
+
 	tft->fillScreen(TFT_BLACK);
 	tft->setTextColor(TFT_YELLOW, TFT_BLACK);
 	tft->setTextFont(4);  // i'm an old mang, mang
 	tft->setCursor(0, 0);
-	tft->printf("RX ch%d sz %d", wifi_chan, mac_cache_sz);
+	tft->printf("RX ch%d sz %d %.2fv", wifi_chan, mac_cache_sz, batt_v/1000);
 	tft->setTextColor(TFT_GREEN, TFT_BLACK);
 
 	if (mac_cache_sz == 0) {
@@ -101,6 +107,7 @@ void refreshingDisplay() {
 							mac_cache[display_index].mac[5]
 	);
 
+	cursor_y += increment;
 	tft->setCursor(0, cursor_y);
 	tft->printf("%d", mac_cache[display_index].msg.id);
 	cursor_y += increment;
@@ -114,7 +121,10 @@ void refreshingDisplay() {
 	tft->printf("%.1fC", (float) mac_cache[display_index].msg.temperature / 10);
 	cursor_y += increment;
 	tft->setCursor(0, cursor_y);
-	tft->printf("%.1f%", (float) mac_cache[display_index].msg.humidity / 10);
+	tft->printf("%.1f%%", (float) mac_cache[display_index].msg.humidity / 10);
+	cursor_y += increment;
+	tft->setCursor(0, cursor_y);
+	tft->printf("%ds", (millis() - mac_cache[display_index].timestamp) / 1000);
 
 }
 
@@ -130,8 +140,16 @@ void appESPNOW(void) {
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(false);
 
-	esp_wifi_set_promiscuous(true);
-	esp_wifi_set_channel(wifi_chan, WIFI_SECOND_CHAN_NONE);
+	esp_wifi_set_ps(WIFI_PS_NONE);
+
+	if (ESP_OK != esp_wifi_set_promiscuous(true)) {
+		Serial.println("error setting promiscuous");
+		goto kthxbye;
+	}
+	if (ESP_OK != esp_wifi_set_channel(wifi_chan, WIFI_SECOND_CHAN_NONE)) {
+		Serial.println("error setting wifi chan");
+		goto kthxbye;
+	}
 
 	if (esp_now_init() != ESP_OK) {
 		goto kthxbye;
@@ -142,6 +160,9 @@ void appESPNOW(void) {
 
 	//  buncha 3-space tab nested uncommented shit, real nice.  real easy to fucking read, shitbird.
 	while(1) {
+		if ((millis() - last_update_time) > 2000) {
+			plzrefresh = true;
+		}
 		if (plzrefresh) {
 			plzrefresh = false;
 			refreshingDisplay();  //  ahh so refresh, much wow
@@ -163,14 +184,20 @@ void appESPNOW(void) {
 			case DOWN:
 				if (wifi_chan < 13) {
 					wifi_chan++;
-      					esp_wifi_set_channel(wifi_chan, WIFI_SECOND_CHAN_NONE);
+					if (ESP_OK != esp_wifi_set_channel(wifi_chan, WIFI_SECOND_CHAN_NONE)) {
+						Serial.println("error setting wifi chan");
+						goto kthxbye2;
+					}
 					plzrefresh = true;
 				}
 				break;
 			case UP:
 				if (wifi_chan > 1) {
 					wifi_chan--;
-					esp_wifi_set_channel(wifi_chan, WIFI_SECOND_CHAN_NONE);
+					if (ESP_OK != esp_wifi_set_channel(wifi_chan, WIFI_SECOND_CHAN_NONE)) {
+						Serial.println("error setting wifi chan");
+						goto kthxbye2;
+					}
 					plzrefresh = true;
 				}
 				break;

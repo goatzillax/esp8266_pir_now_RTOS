@@ -87,8 +87,19 @@ void refreshingDisplay() {
 	tft->setTextColor(TFT_YELLOW, TFT_BLACK);
 	tft->setTextFont(4);  // i'm an old mang, mang
 	tft->setCursor(0, 0);
-	tft->printf("RX ch%d sz %d %.2fv", wifi_chan, mac_cache_sz, batt_v/1000);
-	tft->setTextColor(TFT_GREEN, TFT_BLACK);
+	tft->printf("RX ch%d sz %d", wifi_chan, mac_cache_sz);
+	tft->setCursor(0, 20);
+
+	tft->printf("%.2fv ", batt_v/1000);
+	if (power->isChargeing()) {
+		tft->print("+");
+		tft->print(power->getBattChargeCurrent());
+	}
+	else {
+		tft->print("-");
+		tft->print(power->getBattDischargeCurrent());
+	}
+	tft->print("ma");
 
 	if (mac_cache_sz == 0) {
 		return;
@@ -98,6 +109,7 @@ void refreshingDisplay() {
 	int cursor_y=40;
 	int increment = 20;
 
+	tft->setTextColor(TFT_GREEN, TFT_BLACK);
 	tft->setCursor(0, cursor_y);
 	tft->printf("%02x:%02x:%02x:%02x:%02x:%02x",	mac_cache[display_index].mac[0],
 							mac_cache[display_index].mac[1],
@@ -135,12 +147,17 @@ void appESPNOW(void) {
 	mac_cache_sz = 0;
 	display_index = 0;
 	plzrefresh = true;
-  
+
+	setCpuFrequencyMhz(80);
+	WiFi.disconnect();
 	WiFi.persistent(false);
 	WiFi.mode(WIFI_STA);
 	WiFi.setSleep(false);
 
-	esp_wifi_set_ps(WIFI_PS_NONE);
+	if (ESP_OK != esp_wifi_set_ps(WIFI_PS_NONE)) {
+		Serial.println("error setting wifi ps");
+		goto kthxbye;
+	}
 
 	if (ESP_OK != esp_wifi_set_promiscuous(true)) {
 		Serial.println("error setting promiscuous");
@@ -202,6 +219,8 @@ void appESPNOW(void) {
 				}
 				break;
 			case CCWCIRCLE:
+				ttgo->power->shutdown();
+				break;  // lol
 			case CWCIRCLE:
 				goto kthxbye2;
 				break;
@@ -214,6 +233,7 @@ kthxbye2:  // wonky but whatevs
 	esp_now_deinit();
 kthxbye:
 	WiFi.mode(WIFI_OFF);
+	setCpuFrequencyMhz(160);
 	while(ttgo->getTouch(x, y)) {
 		my_idle();
 	}  // wait till stop touch peepee

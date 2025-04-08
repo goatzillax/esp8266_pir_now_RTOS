@@ -219,7 +219,8 @@ void appESPNOW(void) {
 				}
 				break;
 			case CCWCIRCLE:
-				ttgo->power->shutdown();
+				//ttgo->power->shutdown();
+				ESP.restart();
 				break;  // lol
 			case CWCIRCLE:
 				goto kthxbye2;

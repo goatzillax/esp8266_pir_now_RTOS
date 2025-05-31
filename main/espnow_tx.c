@@ -28,6 +28,117 @@ struct_PIR_msg msg;  //  dunno what the lifetime of this should be, but we passe
 RTC_DATA_ATTR uint32_t wifi_channel=CONFIG_ESPNOW_CHANNEL;  //  wifi-chan start chan at zero chan desu.  chan == 0 means scan.
 RTC_DATA_ATTR uint32_t failberts=0;
 
+float temperature_c = 100.0f;
+float humidity = 150.0f;
+
+//#define SHT_HIT_THE_FAN
+#ifdef SHT_HIT_THE_FAN
+#include "driver/i2c.h"
+#include "SHT3x.h"
+#define SHT3X_I2C_NUM   I2C_NUM_0
+#define SHT3X_I2C_RATE  100000
+#define SHT3X_SDA_GPIO  4
+#define SHT3X_SCL_GPIO  5
+
+int8_t SHT3x_Platform_Init(void) {
+	i2c_config_t conf = {0};
+	conf.mode = I2C_MODE_MASTER;
+	conf.sda_io_num = SHT3X_SDA_GPIO;
+	conf.sda_pullup_en = 1;	//  board should have pullups already...
+	conf.scl_io_num = SHT3X_SCL_GPIO;
+	conf.scl_pullup_en = 1;	//  board should have pullups already...
+	//conf.master.clk_speed = SHT3X_I2C_RATE;
+	conf.clk_stretch_tick = 300; // 300 ticks.  Terrible documentation and implementation.
+	if (i2c_driver_install(SHT3X_I2C_NUM, conf.mode) != ESP_OK)
+		return -1;
+	if (i2c_param_config(SHT3X_I2C_NUM, &conf) != ESP_OK)
+		return -1;
+	return 0;
+}
+
+int8_t SHT3x_Platform_DeInit(void) {
+	i2c_driver_delete(SHT3X_I2C_NUM);
+	//gpio_reset_pin(SHT3X_SDA_GPIO);  // WAT
+	//gpio_reset_pin(SHT3X_SCL_GPIO);
+	return 0;
+}
+
+int8_t SHT3x_Platform_Send(uint8_t Address, uint8_t *Data, uint8_t DataLen) {
+	i2c_cmd_handle_t SHT3x_i2c_cmd_handle = 0;
+	Address <<= 1;
+	Address &= 0xFE;
+
+	SHT3x_i2c_cmd_handle = i2c_cmd_link_create();
+	i2c_master_start(SHT3x_i2c_cmd_handle);
+	i2c_master_write(SHT3x_i2c_cmd_handle, &Address, 1, 1);
+	i2c_master_write(SHT3x_i2c_cmd_handle, Data, DataLen, 1);
+	i2c_master_stop(SHT3x_i2c_cmd_handle);
+	if (i2c_master_cmd_begin(SHT3X_I2C_NUM, SHT3x_i2c_cmd_handle, 1000 / portTICK_RATE_MS) != ESP_OK) {
+		i2c_cmd_link_delete(SHT3x_i2c_cmd_handle);
+		return -1;
+	}
+	i2c_cmd_link_delete(SHT3x_i2c_cmd_handle);
+	return 0;
+}
+
+int8_t SHT3x_Platform_Receive(uint8_t Address, uint8_t *Data, uint8_t DataLen) {
+	i2c_cmd_handle_t SHT3x_i2c_cmd_handle = 0;
+	Address <<= 1;
+	Address |= 0x01;
+
+	SHT3x_i2c_cmd_handle = i2c_cmd_link_create();
+	i2c_master_start(SHT3x_i2c_cmd_handle);
+	i2c_master_write(SHT3x_i2c_cmd_handle, &Address, 1, 1);
+	i2c_master_read(SHT3x_i2c_cmd_handle, Data, DataLen, I2C_MASTER_LAST_NACK);
+	i2c_master_stop(SHT3x_i2c_cmd_handle);
+	if (i2c_master_cmd_begin(SHT3X_I2C_NUM, SHT3x_i2c_cmd_handle, 1000 / portTICK_RATE_MS) != ESP_OK) {
+		i2c_cmd_link_delete(SHT3x_i2c_cmd_handle);
+		return -1;
+	}
+	i2c_cmd_link_delete(SHT3x_i2c_cmd_handle);
+	return 0;
+}
+
+int8_t SHT3x_Platform_CRC(uint16_t Data, uint8_t DataCRC) {
+	return 0;
+}
+
+int8_t SHT3x_Platform_Delay(uint8_t Delay) {
+	vTaskDelay(Delay / portTICK_PERIOD_MS);
+	return 0;
+}
+
+void run_sht() {
+	SHT3x_Handler_t Handler;
+	SHT3x_Sample_t  Sample;
+
+	Handler.PlatformInit    = SHT3x_Platform_Init;
+	Handler.PlatformDeInit  = SHT3x_Platform_DeInit;
+	Handler.PlatformSend    = SHT3x_Platform_Send;
+	Handler.PlatformReceive = SHT3x_Platform_Receive;
+	Handler.PlatformCRC     = SHT3x_Platform_CRC;
+	Handler.PlatformDelay   = SHT3x_Platform_Delay;
+
+	SHT3x_Init(&Handler, 1);  //  should be address 0x45 by default jumper?
+	SHT3x_SetModeSingleShot(&Handler, SHT3x_REPEATABILITY_HIGH);
+
+	if (SHT3x_ReadSample(&Handler, &Sample) != SHT3x_OK) {
+		ESP_LOGE(TAG, "Read failed\n");
+	}
+
+	temperature_c = Sample.TempCelsius;
+	humidity = Sample.HumidityPercent;
+
+	//  this log is somehow fucking broken and I don't know why
+	ESP_LOGI(TAG, "SHT Temp %f Humidity %f\n", temperature_c, humidity);
+	//SHT3x_DeInit(&Handler);
+}
+#else
+void run_sht() {
+}
+#endif
+
+
 void go2sleep() {
 	esp_wifi_stop();
 	fflush(stdout);
@@ -148,8 +259,8 @@ void setup_espnow() {
 				msg.id = scan_chan;
 				msg.voltage=voltage * 100;
 				msg.failberts=failberts;
-				msg.temperature=1000;
-				msg.humidity=1500;
+				msg.temperature=temperature_c * 10;
+				msg.humidity=humidity * 10;
 
 				//  making too many tries seems to hose results due to schmear
 				if (send_message_blocking(1, 100)) {
@@ -216,6 +327,7 @@ void app_main() {
 	ESP_LOGI(TAG, "wifi channel %d\n", wifi_channel);
 	ESP_LOGI(TAG, "failberts %d\n", failberts);
 
+	run_sht();
 	run_adc();
 	run_espnow();
 
